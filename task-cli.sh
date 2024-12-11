@@ -69,8 +69,6 @@ delete_task() {
     else
         echo "Error: Failed to delete task."
     fi
-
-    echo "Task $task_id deleted successfully"
 }
 
 clear_all() {
@@ -85,7 +83,26 @@ clear_all() {
 }
 
 update_task() {
-    echo "update task"
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        echo "Please specify ID and updated name of task!"
+        return 1
+    fi
+
+    local task_id="$1"
+    local new_name="$2"
+
+    if jq --argjson id "$task_id" --arg name "$new_name" \
+        '.tasks |= map(if .id == ($id | tonumber) then .name = $name else . end)' \
+        "$TASK_FILE" > "$TMP_FILE"; then 
+        if [ -z "$TMP_FILE" ]; then 
+            mv "$TMP_FILE" "$TASK_FILE"
+            echo "Task updated successfully"
+        else 
+            echo "Error: Temporary file is empty. Task not updates."
+        fi
+    else 
+        echo "Error: Failed to delete task."
+    fi
 }
 
 mark_as_done() {
