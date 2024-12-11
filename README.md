@@ -20,7 +20,7 @@
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/Patel-Aman/task-cli.git
+   git clone https://github.com/Patel-Aman/task-cli
    ```
 
 2. **Navigate to the Directory:**
