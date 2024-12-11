@@ -9,6 +9,7 @@ TASK_STATUS=("idle" "ongoing" "completed")
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
+PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 RESET='\033[0m'
 
@@ -30,13 +31,17 @@ add_task() {
         return 1
     fi
 
+    # get the current timestamp
+    local timestamp
+    timestamp=$(date +"%H:%M:%S %d-%m-%Y")
+
     # Loop through all provided task names and add them
     for task_name in "$@"; do 
         echo "Adding task: $task_name"
 
         # Find max id of existing tasks and add 1 for the next task
-        if jq --arg name "$task_name" --arg status "${TASK_STATUS[0]}" \
-            '.tasks += [{"id": ((.tasks | map(.id) | max // 0) + 1), "name": $name, "status": $status}]' \
+        if jq --arg name "$task_name" --arg status "${TASK_STATUS[0]}" --arg timestamp "$timestamp" \
+            '.tasks += [{"id": ((.tasks | map(.id) | max // 0) + 1), "name": $name, "status": $status, "createdAt": $timestamp, "updatedAt":$timestamp}]' \
             "$TASK_FILE" > "$TMP_FILE"; then
 
             # Check if data is added to tmp file
@@ -101,10 +106,16 @@ update_task() {
 
     local task_id="$1"
     local new_name="$2"
+    local timestamp;
+    timestamp=$(date +"%H:%M:%S %d-%m-%Y")
+
 
     # Update the name of the task with the specified ID
-    if jq --argjson id "$task_id" --arg name "$new_name" \
-        '.tasks |= map(if .id == ($id | tonumber) then .name = $name else . end)' \
+    if jq --argjson id "$task_id" --arg name "$new_name" --arg timestamp "$timestamp" \
+        '.tasks |= map(if .id == ($id | tonumber) then 
+            .name = $name |
+            .updatedAt = $timestamp
+        else . end)' \
         "$TASK_FILE" > "$TMP_FILE"; then 
         if [ -s "$TMP_FILE" ]; then 
             mv "$TMP_FILE" "$TASK_FILE"
@@ -125,11 +136,16 @@ update_status() {
 
     local task_status="$1"
     shift
+    local timestamp;
+    timestamp=$(date +"%H:%M:%S %d-%m-%Y")
 
     # Loop through all provided task IDs and mark them as idle
     for task_id in "$@"; do
-        if jq --argjson id "$task_id" --arg status "$task_status" \
-            '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
+        if jq --argjson id "$task_id" --arg status "$task_status" --arg timestamp "$timestamp" \
+            '.tasks |= map(if .id == ($id | tonumber) then 
+                .status = $status |
+                .updatedAt = $timestamp
+            else . end)' \
             "$TASK_FILE" > "$TMP_FILE"; then 
             if [ -s "$TMP_FILE" ]; then 
                 mv "$TMP_FILE" "$TASK_FILE"
@@ -151,9 +167,9 @@ list_tasks() {
         return
     fi
 
-     # Display header
-    printf "${CYAN}%-5s %-30s %-15s${RESET}\n" "ID" "Name" "Status"
-    printf "${CYAN}%-5s %-30s %-15s${RESET}\n" "----" "------------------------------" "---------------"
+    # Display header
+    printf "${CYAN}%-5s %-30s %-15s %-20s %-20s${RESET}\n" "ID" "Name" "Status" "CreatedAt" "UpdatedAt"
+    printf "${CYAN}%-5s %-30s %-15s %-20s %-20s${RESET}\n" "----" "------------------------------" "---------------" "--------------------" "--------------------"
 
 
     # Read and display tasks
@@ -161,35 +177,21 @@ list_tasks() {
         if .tasks | length == 0 then 
             "No tasks found." 
         else 
-            .tasks[] | "\(.id): \(.name) \(.status)" 
+            .tasks[] | "\(.id)\t\(.name)\t\(.status)\t\(.createdAt)\t\(.updatedAt)" 
         end
-    ' "$TASK_FILE" | while IFS=$'\t' read -r id name status; do
+    ' "$TASK_FILE" | while IFS=$'\t' read -r id name status createdAt updatedAt; do
         case "$status" in
             idle) color=$YELLOW ;;
-            ongoing) color=$CYAN ;;
+            ongoing) color=$PURPLE ;;
             completed) color=$GREEN ;;
             *) color=$RESET ;;
         esac
-        printf "%-5s %-30s ${color}%-15s${RESET}\n" "$id" "$name" "$status"
-    done < <(
-        jq -r '.tasks[] | "\(.id)\t\(.name)\t\(.status)"' "$TASK_FILE"
-    )
+        printf "%-5s %-30s ${color}%-15s${RESET} %-20s %-20s\n" "$id" "$name" "$status" "$createdAt" "$updatedAt"
+    done
 }
 
 
 # Function to list tasks filtered by status
-list_done() {
-    list_by_status "${TASK_STATUS[2]}"
-}
-
-list_ongoing() {
-    list_by_status "${TASK_STATUS[1]}"
-}
-
-list_idle() {
-    list_by_status "${TASK_STATUS[0]}"
-}
-
 list_by_status() {
     local status="$1"
     if [ ! -s "$TASK_FILE" ]; then 
@@ -199,17 +201,21 @@ list_by_status() {
 
     # Read and display tasks based on the status
     echo "Tasks with status: $status"
+
+    # Display header
+    printf "${CYAN}%-5s %-30s %-15s %-20s %-20s${RESET}\n" "ID" "Name" "Status" "CreatedAt" "UpdatedAt"
+    printf "${CYAN}%-5s %-30s %-15s %-20s %-20s${RESET}\n" "----" "------------------------------" "---------------" "--------------------" "--------------------"
     jq --arg status "$status" -r '
         .tasks | map(select(.status == $status)) | 
         if length == 0 then "No tasks with status \($status) found." 
-        else .[] | "\(.id)\t\(.name)\t\(.status)" end' "$TASK_FILE" | while IFS=$'\t' read -r id name status; do
+        else .[] | "\(.id)\t\(.name)\t\(.status)\t\(.createdAt)\t\(.updatedAt)" end' "$TASK_FILE" | while IFS=$'\t' read -r id name status createdAt updatedAt; do
         case "$status" in
             idle) color=$YELLOW ;;
-            ongoing) color=$CYAN ;;
+            ongoing) color=$PURPLE ;;
             completed) color=$GREEN ;;
             *) color=$RESET ;;
         esac
-        printf "%-5s %-30s ${color}%-15s${RESET}\n" "$id" "$name" "$status"
+        printf "%-5s %-30s ${color}%-15s${RESET} %-20s %-20s\n" "$id" "$name" "$status" "$createdAt" "$updatedAt"
     done
 }
 
@@ -273,15 +279,15 @@ case "$1" in
         ;;
 
     list-done)
-        list_done
+        list_by_status "${TASK_STATUS[2]}"
         ;;
 
     list-ongoing)
-        list_ongoing
+        list_by_status "${TASK_STATUS[1]}"
         ;;
 
     list-idle)
-        list_idle
+        list_by_status "${TASK_STATUS[0]}"
         ;;
 
     help)
