@@ -3,6 +3,7 @@
 TASK_DIR="/home/aman/.tasks"
 TASK_FILE="$TASK_DIR/tasks.json"
 TMP_FILE="$TASK_DIR/tmp.json"
+TASK_STATUS=("idle" "ongoing" "completed")
 
 # check if the directory exists if not create a new directory in home folder
 [ ! -d "$TASK_DIR" ] && mkdir "$TASK_DIR"
@@ -25,8 +26,8 @@ add_task() {
     echo "Adding task: $1"
 
     # find max id of existing tasks and add 1 for the next task
-    if jq --arg name "$1" \
-          '.tasks += [{"id": ((.tasks | map(.id) | max // 0) + 1), "name": $name, "status": "idle"}]' \
+    if jq --arg name "$1" --arg status "${TASK_STATUS[0]}" \
+          '.tasks += [{"id": ((.tasks | map(.id) | max // 0) + 1), "name": $name, "status": $status}]' \
           "$TASK_FILE" > "$TMP_FILE"; then
 
         # -s returns true if file file exist and has size greater than 0
@@ -41,9 +42,6 @@ add_task() {
     else
         echo "Error: Failed to update tasks file."
     fi
-
-    echo "Updated tasks file content:"
-    cat "$TASK_FILE"
 }
 
 delete_task() {
@@ -106,15 +104,63 @@ update_task() {
 }
 
 mark_as_done() {
-    echo "marked as done"
+    if [ -z "$1" ]; then 
+        echo "please provide id of the task"
+        return 1
+    fi 
+
+    if jq --argjson id "$1" --arg status "${TASK_STATUS[2]}" \
+        '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
+        "$TASK_FILE" > "$TMP_FILE"; then 
+        if [ -s "$TMP_FILE" ]; then 
+            mv "$TMP_FILE" "$TASK_FILE"
+            echo "Task updated successfully"
+        else 
+            echo "Error: Temporary file is empty. Task not updated."
+        fi
+    else 
+        echo "Error: Failed to delete task."
+    fi
 }
 
 mark_ongoing() {
-    echo "marked as ongoing"
+    if [ -z "$1" ]; then 
+        echo "please provide id of the task"
+        return 1
+    fi 
+
+    if jq --argjson id "$1" --arg status "${TASK_STATUS[1]}" \
+        '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
+        "$TASK_FILE" > "$TMP_FILE"; then 
+        if [ -s "$TMP_FILE" ]; then 
+            mv "$TMP_FILE" "$TASK_FILE"
+            echo "Task updated successfully"
+        else 
+            echo "Error: Temporary file is empty. Task not updated."
+        fi
+    else 
+        echo "Error: Failed to delete task."
+    fi
 }
 
 mark_idle() {
-    echo "marked as idle"
+    if [ -z "$1" ]; then 
+        echo "please provide id of the task"
+        return 1
+    fi 
+
+    if jq --argjson id "$1" --arg status "${TASK_STATUS[0]}" \
+        '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
+        "$TASK_FILE" > "$TMP_FILE"; then 
+        if [ -s "$TMP_FILE" ]; then 
+            mv "$TMP_FILE" "$TASK_FILE"
+            echo "Task updated successfully"
+        else 
+            echo "Error: Temporary file is empty. Task not updated."
+        fi
+    else 
+        echo "Error: Failed to delete task."
+    fi
 }
 
 list_tasks() {
