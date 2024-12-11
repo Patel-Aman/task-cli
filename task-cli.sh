@@ -18,7 +18,7 @@ RESET='\033[0m'
 # Check for the tasks file. If it does not exist, create a new file 
 # and initialize it with a tasks array to store the tasks
 if [ ! -f "$TASK_FILE" ]; then
-    touch "$TASK_FILE"
+    touch "$TASK_FILE" 
     echo '{"tasks": []}' > "$TASK_FILE"
 fi
 
