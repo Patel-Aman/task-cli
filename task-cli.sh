@@ -117,59 +117,6 @@ update_task() {
     fi
 }
 
-# Function to mark a task as done by ID
-mark_as_done() {
-    if [ -z "$1" ]; then 
-        echo "Please provide the ID of the task."
-        return 1
-    fi 
-
-    # Loop through all provided task IDs and mark them as done
-    for task_id in "$@"; do
-        if jq --argjson id "$task_id" --arg status "${TASK_STATUS[2]}" \
-            '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
-            "$TASK_FILE" > "$TMP_FILE"; then 
-            if [ -s "$TMP_FILE" ]; then 
-                mv "$TMP_FILE" "$TASK_FILE"
-                echo "Task marked as completed."
-            else 
-                echo "Error: Temporary file is empty. Task not updated."
-            fi
-        else 
-            echo "Error: Failed to mark task as done."
-        fi
-    done
-}
-
-# Function to mark a task as ongoing by ID
-mark_ongoing() {
-    if [ -z "$1" ]; then 
-        echo "Please provide the ID of the task."
-        return 1
-    fi 
-
-    # Loop through all provided task IDs and mark them as ongoing
-    for task_id in "$@"; do
-        if jq --argjson id "$task_id" --arg status "${TASK_STATUS[1]}" \
-            '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
-            "$TASK_FILE" > "$TMP_FILE"; then 
-            if [ -s "$TMP_FILE" ]; then 
-                mv "$TMP_FILE" "$TASK_FILE"
-                echo "Task marked as ongoing."
-            else 
-                echo "Error: Temporary file is empty. Task not updated."
-            fi
-        else 
-            echo "Error: Failed to mark task as ongoing."
-        fi
-    done
-}
-
-# Function to mark a task as idle by ID
-mark_idle() {
-     update_status "${TASK_STATUS[0]}" "$@"
-}
-
 update_status() {
     if [ -z "$1" ]; then 
         echo "Please provide the ID of the task."
@@ -186,7 +133,7 @@ update_status() {
             "$TASK_FILE" > "$TMP_FILE"; then 
             if [ -s "$TMP_FILE" ]; then 
                 mv "$TMP_FILE" "$TASK_FILE"
-                echo "Task marked as idle."
+                echo "Task marked as $task_status."
             else 
                 echo "Error: Temporary file is empty. Task not updated."
             fi
@@ -216,7 +163,7 @@ list_tasks() {
         else 
             .tasks[] | "\(.id): \(.name) \(.status)" 
         end
-    ' "$TASK_FILE" | while IFS=' ' read -r id name status; do
+    ' "$TASK_FILE" | while IFS=$'\t' read -r id name status; do
         case "$status" in
             idle) color=$YELLOW ;;
             ongoing) color=$CYAN ;;
@@ -224,7 +171,9 @@ list_tasks() {
             *) color=$RESET ;;
         esac
         printf "%-5s %-30s ${color}%-15s${RESET}\n" "$id" "$name" "$status"
-    done
+    done < <(
+        jq -r '.tasks[] | "\(.id)\t\(.name)\t\(.status)"' "$TASK_FILE"
+    )
 }
 
 
@@ -250,10 +199,10 @@ list_by_status() {
 
     # Read and display tasks based on the status
     echo "Tasks with status: $status"
-    jq --arg status "$status" -r \
-        '.tasks | map(select(.status == $status)) | \
-        if length == 0 then "No tasks with status $status found." \
-        else .[] | "\(.id): \(.name) \(.status)" end' "$TASK_FILE"  | while IFS=' ' read -r id name status; do
+    jq --arg status "$status" -r '
+        .tasks | map(select(.status == $status)) | 
+        if length == 0 then "No tasks with status \($status) found." 
+        else .[] | "\(.id)\t\(.name)\t\(.status)" end' "$TASK_FILE" | while IFS=$'\t' read -r id name status; do
         case "$status" in
             idle) color=$YELLOW ;;
             ongoing) color=$CYAN ;;
@@ -263,6 +212,7 @@ list_by_status() {
         printf "%-5s %-30s ${color}%-15s${RESET}\n" "$id" "$name" "$status"
     done
 }
+
 
 # Function to display usage information
 show_usage() {
@@ -305,17 +255,17 @@ case "$1" in
 
     mark-done)
         shift 
-        mark_as_done "$@"
+        update_status "${TASK_STATUS[2]}" "$@"
         ;;
 
     mark-ongoing)
         shift 
-        mark_ongoing "$@"
+        update_status "${TASK_STATUS[1]}" "$@"
         ;;
 
     mark-idle)
         shift
-        mark_idle "$@"
+        update_status "${TASK_STATUS[0]}" "$@"
         ;;
 
     list)
