@@ -5,258 +5,305 @@ TASK_FILE="$TASK_DIR/tasks.json"
 TMP_FILE="$TASK_DIR/tmp.json"
 TASK_STATUS=("idle" "ongoing" "completed")
 
-# check if the directory exists if not create a new directory in home folder
+# Check if the directory exists; if not, create a new directory in the home folder
 [ ! -d "$TASK_DIR" ] && mkdir "$TASK_DIR"
 
-# check for the tasks file. If does not exist create a new file 
-# initialize it with tasks array to store the tasks
+# Check for the tasks file. If it does not exist, create a new file 
+# and initialize it with a tasks array to store the tasks
 if [ ! -f "$TASK_FILE" ]; then
     touch "$TASK_FILE"
     echo '{"tasks": []}' > "$TASK_FILE"
 fi
 
-
+# Function to add a task or multiple tasks
 add_task() {
-    # check if the string (i.e. the task is not empty)
-    # -z throws true if string is empty
+    # Check if no task name is provided
     if [ -z "$1" ]; then
-        echo "please provide name of the task"
+        echo "Please provide the name(s) of the task(s)."
+        return 1
     fi
 
-    echo "Adding task: $1"
+    # Loop through all provided task names and add them
+    for task_name in "$@"; do 
+        echo "Adding task: $task_name"
 
-    # find max id of existing tasks and add 1 for the next task
-    if jq --arg name "$1" --arg status "${TASK_STATUS[0]}" \
-          '.tasks += [{"id": ((.tasks | map(.id) | max // 0) + 1), "name": $name, "status": $status}]' \
-          "$TASK_FILE" > "$TMP_FILE"; then
+        # Find max id of existing tasks and add 1 for the next task
+        if jq --arg name "$task_name" --arg status "${TASK_STATUS[0]}" \
+            '.tasks += [{"id": ((.tasks | map(.id) | max // 0) + 1), "name": $name, "status": $status}]' \
+            "$TASK_FILE" > "$TMP_FILE"; then
 
-        # -s returns true if file file exist and has size greater than 0
-        # check if data is added to tmp file
-
-        if [ -s "$TMP_FILE" ]; then
-            mv "$TMP_FILE" "$TASK_FILE"
-            echo "Task added successfully!"
+            # Check if data is added to tmp file
+            if [ -s "$TMP_FILE" ]; then
+                mv "$TMP_FILE" "$TASK_FILE"
+                echo "Task added successfully!"
+            else
+                echo "Error: Temporary file is empty. Task not added."
+            fi
         else
-            echo "Error: Temporary file is empty. Task not added."
+            echo "Error: Failed to update tasks file."
         fi
-    else
-        echo "Error: Failed to update tasks file."
-    fi
+    done
 }
 
+# Function to delete a task by ID
 delete_task() {
     if [ -z "$1" ]; then
         echo "Error: Task ID is required."
         return 1
     fi
 
-    local task_id="$1"
+    # Loop through all provided task IDs and delete them
+    for task_id in "$@"; do
+        echo "Deleting task with ID: $task_id"
 
-    echo "Deleting task with ID: $task_id"
-
-    # filter the data based on provided id to not include the provided id task
-    if jq --argjson id "$task_id" \
-          '.tasks |= map(select(.id != $id))' \
-          "$TASK_FILE" > "$TMP_FILE"; then
-        if [ -s "$TMP_FILE" ]; then
-            mv "$TMP_FILE" "$TASK_FILE"
-            echo "Task deleted successfully!"
+        # Filter tasks to exclude the provided ID
+        if jq --argjson id "$task_id" \
+            '.tasks |= map(select(.id != $id))' \
+            "$TASK_FILE" > "$TMP_FILE"; then
+            if [ -s "$TMP_FILE" ]; then
+                mv "$TMP_FILE" "$TASK_FILE"
+                echo "Task deleted successfully!"
+            else
+                echo "Error: Temporary file is empty. Task not deleted."
+            fi
         else
-            echo "Error: Temporary file is empty. Task not deleted."
+            echo "Error: Failed to delete task."
         fi
-    else
-        echo "Error: Failed to delete task."
-    fi
+    done
 }
 
+# Function to clear all tasks with confirmation
 clear_all() {
+    echo "This will delete all the existing tasks."
     read -p "Are you sure you want to proceed? (y/n): " confirmation
     if [[ "$confirmation" =~ ^[Yy]$ ]]; then
         rm "$TASK_FILE"
-        echo "task cleared successfully"
+        echo '{"tasks": []}' > "$TASK_FILE"
+        echo "All tasks cleared successfully."
     else
         echo "Operation cancelled."
-        exit 1
     fi
 }
 
+# Function to update a task by ID
 update_task() {
     if [ -z "$1" ] || [ -z "$2" ]; then
-        echo "Please specify ID and updated name of task!"
+        echo "Please specify the ID and the updated name of the task!"
         return 1
     fi
 
     local task_id="$1"
     local new_name="$2"
 
+    # Update the name of the task with the specified ID
     if jq --argjson id "$task_id" --arg name "$new_name" \
         '.tasks |= map(if .id == ($id | tonumber) then .name = $name else . end)' \
         "$TASK_FILE" > "$TMP_FILE"; then 
         if [ -s "$TMP_FILE" ]; then 
             mv "$TMP_FILE" "$TASK_FILE"
-            echo "Task updated successfully"
+            echo "Task updated successfully."
         else 
             echo "Error: Temporary file is empty. Task not updated."
         fi
     else 
-        echo "Error: Failed to delete task."
+        echo "Error: Failed to update task."
     fi
 }
 
+# Function to mark a task as done by ID
 mark_as_done() {
     if [ -z "$1" ]; then 
-        echo "please provide id of the task"
+        echo "Please provide the ID of the task."
         return 1
     fi 
 
-    if jq --argjson id "$1" --arg status "${TASK_STATUS[2]}" \
-        '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
-        "$TASK_FILE" > "$TMP_FILE"; then 
-        if [ -s "$TMP_FILE" ]; then 
-            mv "$TMP_FILE" "$TASK_FILE"
-            echo "Task updated successfully"
+    # Loop through all provided task IDs and mark them as done
+    for task_id in "$@"; do
+        if jq --argjson id "$task_id" --arg status "${TASK_STATUS[2]}" \
+            '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
+            "$TASK_FILE" > "$TMP_FILE"; then 
+            if [ -s "$TMP_FILE" ]; then 
+                mv "$TMP_FILE" "$TASK_FILE"
+                echo "Task marked as completed."
+            else 
+                echo "Error: Temporary file is empty. Task not updated."
+            fi
         else 
-            echo "Error: Temporary file is empty. Task not updated."
+            echo "Error: Failed to mark task as done."
         fi
-    else 
-        echo "Error: Failed to delete task."
-    fi
+    done
 }
 
+# Function to mark a task as ongoing by ID
 mark_ongoing() {
     if [ -z "$1" ]; then 
-        echo "please provide id of the task"
+        echo "Please provide the ID of the task."
         return 1
     fi 
 
-    if jq --argjson id "$1" --arg status "${TASK_STATUS[1]}" \
-        '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
-        "$TASK_FILE" > "$TMP_FILE"; then 
-        if [ -s "$TMP_FILE" ]; then 
-            mv "$TMP_FILE" "$TASK_FILE"
-            echo "Task updated successfully"
+    # Loop through all provided task IDs and mark them as ongoing
+    for task_id in "$@"; do
+        if jq --argjson id "$task_id" --arg status "${TASK_STATUS[1]}" \
+            '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
+            "$TASK_FILE" > "$TMP_FILE"; then 
+            if [ -s "$TMP_FILE" ]; then 
+                mv "$TMP_FILE" "$TASK_FILE"
+                echo "Task marked as ongoing."
+            else 
+                echo "Error: Temporary file is empty. Task not updated."
+            fi
         else 
-            echo "Error: Temporary file is empty. Task not updated."
+            echo "Error: Failed to mark task as ongoing."
         fi
-    else 
-        echo "Error: Failed to delete task."
-    fi
+    done
 }
 
+# Function to mark a task as idle by ID
 mark_idle() {
     if [ -z "$1" ]; then 
-        echo "please provide id of the task"
+        echo "Please provide the ID of the task."
         return 1
     fi 
 
-    if jq --argjson id "$1" --arg status "${TASK_STATUS[0]}" \
-        '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
-        "$TASK_FILE" > "$TMP_FILE"; then 
-        if [ -s "$TMP_FILE" ]; then 
-            mv "$TMP_FILE" "$TASK_FILE"
-            echo "Task updated successfully"
+    # Loop through all provided task IDs and mark them as idle
+    for task_id in "$@"; do
+        if jq --argjson id "$task_id" --arg status "${TASK_STATUS[0]}" \
+            '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
+            "$TASK_FILE" > "$TMP_FILE"; then 
+            if [ -s "$TMP_FILE" ]; then 
+                mv "$TMP_FILE" "$TASK_FILE"
+                echo "Task marked as idle."
+            else 
+                echo "Error: Temporary file is empty. Task not updated."
+            fi
         else 
-            echo "Error: Temporary file is empty. Task not updated."
+            echo "Error: Failed to mark task as idle."
         fi
-    else 
-        echo "Error: Failed to delete task."
-    fi
+    done
 }
 
+# Function to list all tasks
 list_tasks() {
+
     if [ ! -s "$TASK_FILE" ]; then 
-        echo "No task found."
+        echo "No tasks found."
         return
     fi
-
+    
     # Read and display tasks
     echo "List of Tasks:"
-    jq -r '.tasks[] | "\(.id): \(.name) [\(.status)]"' "$TASK_FILE"
+    jq -r '
+        if .tasks | length == 0 then 
+            "No tasks found." 
+        else 
+            .tasks[] | "\(.id): \(.name) [\(.status)]" 
+        end
+    ' "$TASK_FILE"
 }
 
+# Function to list tasks filtered by status
 list_done() {
-    echo "list of completed tasks"
+    list_by_status "${TASK_STATUS[2]}"
 }
 
 list_ongoing() {
-    echo "list of ongoing tasks"
+    list_by_status "${TASK_STATUS[1]}"
 }
 
 list_idle() {
-    echo "list of idle tasks"
-}  
-
-show_usage() {
-    echo "list of commands"
+    list_by_status "${TASK_STATUS[0]}"
 }
 
+list_by_status() {
+    local status="$1"
+    if [ ! -s "$TASK_FILE" ]; then 
+        echo "No tasks found."
+        return
+    fi
+
+    # Read and display tasks based on the status
+    echo "Tasks with status: $status"
+    jq --arg status "$status" -r \
+        '.tasks | map(select(.status == $status)) | \
+        if length == 0 then "No tasks with status $status found." \
+        else .[] | "\(.id): \(.name) [\(.status)]" end' "$TASK_FILE"
+}
+
+# Function to display usage information
+show_usage() {
+    echo "Usage: ./task-cli.sh [command] [arguments...]"
+    echo "Commands:"
+    echo "  add [task_name ...]          Add one or more tasks."
+    echo "  delete [task_id ...]         Delete one or more tasks by ID."
+    echo "  clear                        Clear all tasks after confirmation."
+    echo "  update [task_id] [new_name]  Update the name of a task by ID."
+    echo "  mark-done [task_id ...]      Mark one or more tasks as completed."
+    echo "  mark-ongoing [task_id ...]   Mark one or more tasks as ongoing."
+    echo "  mark-idle [task_id ...]      Mark one or more tasks as idle."
+    echo "  list                         List all tasks."
+    echo "  list-done                   List tasks marked as completed."
+    echo "  list-ongoing                List tasks marked as ongoing."
+    echo "  list-idle                   List tasks marked as idle."
+    echo "  help                        Show this usage information."
+}
+
+# Main script logic using a case statement
 case "$1" in 
-    # CRUD operation
-    # Add new task
     add)
         shift
-        add_task "$*"
+        add_task "$@"
         ;;
 
-    # Delete a task
     delete)
         shift 
-        delete_task "$*"
+        delete_task "$@"
         ;;
 
-    # remove all the tasks
     clear)
         clear_all
         ;;
 
-    # update given task
     update)
         shift
         update_task "$@"
         ;;
 
-    # Status Update
-    # mark as completed
     mark-done)
         shift 
-        mark_as_done "$*"
+        mark_as_done "$@"
         ;;
 
-    # mark as in progress
     mark-ongoing)
         shift 
-        mark_ongoing "$*"
+        mark_ongoing "$@"
         ;;
 
-    # mark as idle, default status of tasks
     mark-idle)
-        shift 
-        mark_idle "$*"
+        shift
+        mark_idle "$@"
         ;;
 
-    # show the tasks
-    # Show all the tasks
     list)
         list_tasks
         ;;
 
-    # show all completed tasks
     list-done)
         list_done
         ;;
 
-    # show ongoing tasks
     list-ongoing)
         list_ongoing
         ;;
 
-    # show idle tasks
     list-idle)
         list_idle
         ;;
 
+    help)
+        show_usage
+        ;;
+
     *)
         show_usage
-        exit 1
         ;;
 esac
