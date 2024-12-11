@@ -20,12 +20,12 @@
 
 1. **Clone the Repository:**
    ```bash
-   git clone https://github.com/your-repo/task-manager-cli.git
+   git clone https://github.com/Patel-Aman/task-cli.git
    ```
 
 2. **Navigate to the Directory:**
    ```bash
-   cd task-manager-cli
+   cd task-cli
    ```
 
 3. **Make the Script Executable:**
