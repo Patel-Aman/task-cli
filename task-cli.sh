@@ -5,6 +5,13 @@ TASK_FILE="$TASK_DIR/tasks.json"
 TMP_FILE="$TASK_DIR/tmp.json"
 TASK_STATUS=("idle" "ongoing" "completed")
 
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+CYAN='\033[0;36m'
+RESET='\033[0m'
+
 # Check if the directory exists; if not, create a new directory in the home folder
 [ ! -d "$TASK_DIR" ] && mkdir "$TASK_DIR"
 
@@ -160,14 +167,21 @@ mark_ongoing() {
 
 # Function to mark a task as idle by ID
 mark_idle() {
+     update_status "${TASK_STATUS[0]}" "$@"
+}
+
+update_status() {
     if [ -z "$1" ]; then 
         echo "Please provide the ID of the task."
         return 1
     fi 
 
+    local task_status="$1"
+    shift
+
     # Loop through all provided task IDs and mark them as idle
     for task_id in "$@"; do
-        if jq --argjson id "$task_id" --arg status "${TASK_STATUS[0]}" \
+        if jq --argjson id "$task_id" --arg status "$task_status" \
             '.tasks |= map(if .id == ($id | tonumber) then .status = $status else . end)' \
             "$TASK_FILE" > "$TMP_FILE"; then 
             if [ -s "$TMP_FILE" ]; then 
@@ -186,20 +200,33 @@ mark_idle() {
 list_tasks() {
 
     if [ ! -s "$TASK_FILE" ]; then 
-        echo "No tasks found."
+        echo -e "${RED}No tasks found.${RESET}"
         return
     fi
-    
+
+     # Display header
+    printf "${CYAN}%-5s %-30s %-15s${RESET}\n" "ID" "Name" "Status"
+    printf "${CYAN}%-5s %-30s %-15s${RESET}\n" "----" "------------------------------" "---------------"
+
+
     # Read and display tasks
-    echo "List of Tasks:"
     jq -r '
         if .tasks | length == 0 then 
             "No tasks found." 
         else 
-            .tasks[] | "\(.id): \(.name) [\(.status)]" 
+            .tasks[] | "\(.id): \(.name) \(.status)" 
         end
-    ' "$TASK_FILE"
+    ' "$TASK_FILE" | while IFS=' ' read -r id name status; do
+        case "$status" in
+            idle) color=$YELLOW ;;
+            ongoing) color=$CYAN ;;
+            completed) color=$GREEN ;;
+            *) color=$RESET ;;
+        esac
+        printf "%-5s %-30s ${color}%-15s${RESET}\n" "$id" "$name" "$status"
+    done
 }
+
 
 # Function to list tasks filtered by status
 list_done() {
@@ -226,7 +253,15 @@ list_by_status() {
     jq --arg status "$status" -r \
         '.tasks | map(select(.status == $status)) | \
         if length == 0 then "No tasks with status $status found." \
-        else .[] | "\(.id): \(.name) [\(.status)]" end' "$TASK_FILE"
+        else .[] | "\(.id): \(.name) \(.status)" end' "$TASK_FILE"  | while IFS=' ' read -r id name status; do
+        case "$status" in
+            idle) color=$YELLOW ;;
+            ongoing) color=$CYAN ;;
+            completed) color=$GREEN ;;
+            *) color=$RESET ;;
+        esac
+        printf "%-5s %-30s ${color}%-15s${RESET}\n" "$id" "$name" "$status"
+    done
 }
 
 # Function to display usage information
