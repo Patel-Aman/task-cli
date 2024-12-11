@@ -94,11 +94,11 @@ update_task() {
     if jq --argjson id "$task_id" --arg name "$new_name" \
         '.tasks |= map(if .id == ($id | tonumber) then .name = $name else . end)' \
         "$TASK_FILE" > "$TMP_FILE"; then 
-        if [ -z "$TMP_FILE" ]; then 
+        if [ -s "$TMP_FILE" ]; then 
             mv "$TMP_FILE" "$TASK_FILE"
             echo "Task updated successfully"
         else 
-            echo "Error: Temporary file is empty. Task not updates."
+            echo "Error: Temporary file is empty. Task not updated."
         fi
     else 
         echo "Error: Failed to delete task."
@@ -118,7 +118,14 @@ mark_idle() {
 }
 
 list_tasks() {
-    echo "list of tasks"
+    if [ ! -s "$TASK_FILE" ]; then 
+        echo "No task found."
+        return
+    fi
+
+    # Read and display tasks
+    echo "List of Tasks:"
+    jq -r '.tasks[] | "\(.id): \(.name) [\(.status)]"' "$TASK_FILE"
 }
 
 list_done() {
@@ -158,7 +165,8 @@ case "$1" in
 
     # update given task
     update)
-        update_task "$1"
+        shift
+        update_task "$@"
         ;;
 
     # Status Update
